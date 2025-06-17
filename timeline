@@ -388,7 +388,28 @@ const fixedOpts = {
   role: row.role,
   station: row.station
 }));
+function generateTimelineHours() {
+  const container = document.getElementById("timelineHours");
+  if (!container) return;
+
+  container.innerHTML = ""; // clear any existing
+
+  for (let i = 0; i <= 24; i++) {
+    const hour = (3 + i) % 24; // start at 03:00
+    const label = `${hour.toString().padStart(2, "0")}:00`;
+
+    const div = document.createElement("div");
+    div.textContent = label;
+    div.style.flex = "1";
+    div.style.textAlign = "center";
+    div.style.borderLeft = "1px solid #fff";
+    div.style.boxSizing = "border-box";
+
+    container.appendChild(div);
+  }
+}
     window.__timelineGridApi?.setRowData?.(timelineRows);
+    generateTimelineHours();
   });
 });
 </script>
