@@ -328,9 +328,10 @@ const fixedOpts = {
           return h * 60 + m;
         };
 
-        const totalMinutes = toMinutes("24:00") - toMinutes("04:45");
-        const shiftStart = toMinutes(shift_start_time) - toMinutes("04:45");
-        const shiftEnd = toMinutes(shift_end_time) - toMinutes("04:45");
+        const baseTime = "03:00";
+        const totalMinutes = 1440; // 24 hours from 03:00 to 03:00 next day
+        const shiftStart = toMinutes(shift_start_time) - toMinutes(baseTime);
+        const shiftEnd = toMinutes(shift_end_time) - toMinutes(baseTime);
         const leftPct = (shiftStart / totalMinutes) * 100;
         const widthPct = ((shiftEnd - shiftStart) / totalMinutes) * 100;
 
