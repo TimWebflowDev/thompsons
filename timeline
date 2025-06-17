@@ -88,14 +88,14 @@ function buildFixedColumnDefs() {
     {
       field: "shift_count", headerName: "No. of Shifts", width: 70, editable: true,
       cellRenderer: (params) => {
-        const { station, role } = params.data;
-        const currentRowIndex = params.rowIndex;
-        for (let i = 0; i < currentRowIndex; i++) {
-          const prev = params.api.getDisplayedRowAtIndex(i).data;
-          if (prev.station === station && prev.role === role) return "";
-        }
-        return params.value ?? 1;
-      }
+  const { station, role } = params.data;
+  const currentRowIndex = params.rowIndex;
+  for (let i = 0; i < currentRowIndex; i++) {
+    const prev = params.api.getDisplayedRowAtIndex(i).data;
+    if (prev.station === station && prev.role === role) return "";
+  }
+  return params.value ?? 1;
+}
     },
     {
       field: "date", headerName: "Date", width: 180, editable: true,
@@ -187,39 +187,6 @@ function rebuildShiftRows(input, results) {
   return rows;
 }
 
-function refreshTimelineGrid(rows, slots) {
-  const timelineGrid = document.querySelector("#timelineGrid");
-  if (!timelineGrid || !timelineGrid.__gridApi) return;
-
-  const newTimelineCols = [{
-    field: "station_label", headerName: "Station", pinned: "left", width: 120, cellStyle: stationCellStyle
-  },
-    ...slots.map(t => ({
-      headerName: t, field: t, minWidth: 70, maxWidth: 100,
-      valueGetter: p => p.data[t] || "",
-      cellStyle: p => p.value ? {
-        backgroundColor: p.data.role === "TL" ? getTLColor(p.data.station) : getStationColor(p.data.station),
-        fontWeight: "bold", textAlign: "center"
-      } : {}
-    }))
-  ];
-
-  timelineGrid.__gridApi.setColumnDefs(newTimelineCols);
-
- const timelineRows = rows.map(row => {
-  const tr = {
-    station: row.station,
-    station_label: row.station,
-    role: row.role // 👈 Add this line
-  };
-  slots.forEach(t => tr[t] = row.blocks?.[t] || "");
-  return tr;
-});
-
-  timelineGrid.__gridApi.setRowData(timelineRows);
-  timelineGrid.__gridApi.redrawRows();
-}
-
 function applyGridTheme() {
   ["fixedGrid", "timelineGrid"].forEach(id => {
     const grid = document.getElementById(id);
@@ -248,146 +215,178 @@ window.addEventListener("DOMContentLoaded", () => {
       console.error("Missing grid container element(s). Aborting init.");
       return;
     }
-
-    const fixedOpts = {
-      columnDefs: buildFixedColumnDefs(),
-      defaultColDef: { resizable: true, editable: true },
-      domLayout: "autoHeight",
-      onCellValueChanged: (event) => {
-        const allRows = [];
-        const allTimes = new Set();
-const getTimeBlocks = (start, end) => {
-  const result = [];
-  let s = Math.floor(toMinutes(start) / 15) * 15;
-  let e = Math.ceil(toMinutes(end) / 15) * 15;
-  for (let i = s; i <= e; i += 15) {
-    const t = toTimeStr(i);
-    result.push(t);
-    allTimes.add(t);
+const fixedOpts = {
+  columnDefs: buildFixedColumnDefs(),
+  defaultColDef: { resizable: true, editable: true },
+  domLayout: "autoHeight",
+  onCellValueChanged: (event) => {
+  if (event.colDef.field === 'date') {
+    const newDate = event.newValue;
+    event.api.forEachNode((node) => {
+      node.setDataValue("date", newDate);
+    });
   }
-  return result;
-};
-        if (event.colDef.field === 'date') {
-        const newDate = event.newValue;
-        event.api.forEachNode((node) => {
-        node.setDataValue("date", newDate);
-  });
-}
 
-        if (event.colDef.field === 'selected' && event.newValue?.payroll_no) {
-          window.__assignedShiftUsers = window.__assignedShiftUsers || new Set();
-          window.__assignedShiftUsers.add(event.newValue.payroll_no);
-          event.api.redrawRows();
+  if (["selected", "shift_start_time", "shift_end_time", "shift_count"].includes(event.colDef.field)) {
+    let updatedRows;
 
-          for (let i = 0; i < event.api.getDisplayedRowCount(); i++) {
-            const row = event.api.getDisplayedRowAtIndex(i).data;
-            const name = row.selected
-  ? `${row.selected.first_name} ${row.selected.surname}`
-  : `${row.role} Shift ${row.shift_index}`;
-            const blocks = {};
-            getTimeBlocks(row.shift_start_time, row.shift_end_time).forEach(t => blocks[t] = name);
-            allRows.push({ ...row, blocks });
+    if (event.colDef.field === "shift_count") {
+      const { station, role } = event.data;
+
+      // Step 1: Update Wized input with new shift count
+      const updatedInput = input.map(entry => {
+        if (entry.station === station && entry.role === role) {
+          return {
+            ...entry,
+            [`${role.toLowerCase()}_shifts`]: parseInt(event.newValue || 0)
+          };
+        }
+        return entry;
+      });
+
+      // Step 2: Capture current full grid data
+      const oldRows = [];
+      event.api.forEachNode(node => oldRows.push(node.data));
+
+      // Step 3: Rebuild just the affected station+role rows
+      const rebuiltRows = rebuildShiftRows(updatedInput, results).filter(
+        r => r.station === station && r.role === role
+      );
+
+      // Step 4: Merge matching fields from old data into rebuilt rows
+      const mergedRebuiltRows = rebuiltRows.map(newRow => {
+        const existing = oldRows.find(old =>
+          old.station === newRow.station &&
+          old.role === newRow.role &&
+          old.shift_index === newRow.shift_index &&
+          old.date === newRow.date
+        );
+        return existing ? { ...newRow, ...existing } : newRow;
+      });
+
+      // Step 5: Preserve all rows from other stations/roles, and inject updated ones in place
+      let finalRows = [];
+      let inserted = false;
+
+      oldRows.forEach(r => {
+        if (r.station === station && r.role === role) {
+          if (!inserted) {
+            finalRows.push(...mergedRebuiltRows);
+            inserted = true;
           }
-
-          const sortedSlots = Array.from(allTimes).sort((a, b) => toMinutes(a) - toMinutes(b));
-          Wized.data.v.timeline_view_rows = allRows;
-          Wized.data.v.timeline_slots = sortedSlots;
-          refreshTimelineGrid(allRows, sortedSlots);
+          // skip existing matching row
+        } else {
+          finalRows.push(r);
         }
+      });
 
-        if (["shift_start_time", "shift_end_time"].includes(event.colDef.field)) {
-          for (let i = 0; i < event.api.getDisplayedRowCount(); i++) {
-            const row = event.api.getDisplayedRowAtIndex(i).data;
-            const name = row.selected
-  ? `${row.selected.first_name} ${row.selected.surname}`
-  : `${row.role} Shift ${row.shift_index}`;
-
-            const blocks = {};
-            getTimeBlocks(row.shift_start_time, row.shift_end_time).forEach(t => blocks[t] = name);
-            allRows.push({ ...row, blocks });
-          }
-          const sortedSlots = Array.from(allTimes).sort((a, b) => toMinutes(a) - toMinutes(b));
-          Wized.data.v.timeline_view_rows = allRows;
-          Wized.data.v.timeline_slots = sortedSlots;
-          refreshTimelineGrid(allRows, sortedSlots);
-        }
-
-        if (event.colDef.field === 'shift_count') {
-          const { station, role } = event.data;
-          const oldRows = Array.from({ length: event.api.getDisplayedRowCount() }, (_, i) =>
-            event.api.getDisplayedRowAtIndex(i).data
-          );
-          const updated = input.map(entry => {
-            if (entry.station === station) {
-              return { ...entry, [`${role.toLowerCase()}_shifts`]: parseInt(event.newValue || 0)};
-            }
-            return entry;
-          });
-
-          const newRows = rebuildShiftRows(updated, results);
-          const mergedRows = newRows.map(newRow => {
-            const match = oldRows.find(r =>
-              r.station === newRow.station &&
-              r.role === newRow.role &&
-              r.shift_index === newRow.shift_index
-            );
-            return match ? { ...newRow, ...match } : newRow;
-          });
-
-          mergedRows.forEach(row => {
-           const name = row.selected
-  ? `${row.selected.first_name} ${row.selected.surname}`
-  : `${row.role} Shift ${row.shift_index}`;
-            const blocks = {};
-            getTimeBlocks(row.shift_start_time, row.shift_end_time).forEach(t => blocks[t] = name);
-            allRows.push({ ...row, blocks });
-          });
-
-          const sortedSlots = Array.from(allTimes).sort((a, b) => toMinutes(a) - toMinutes(b));
-          Wized.data.v.roster_search_input = updated;
-          Wized.data.v.shift_assignment_rows = allRows;
-          Wized.data.v.timeline_view_rows = allRows;
-          Wized.data.v.timeline_slots = sortedSlots;
-          window.__fixedGridApi.setRowData(allRows);
-          refreshTimelineGrid(allRows, sortedSlots);
-        }
+      // Step 6: Update Wized and grids
+      Wized.data.v.roster_search_input = updatedInput;
+      Wized.data.v.shift_assignment_rows = finalRows;
+      window.__fixedGridApi.setRowData(finalRows);
+      window.__timelineGridApi?.setRowData?.(finalRows);
+    } else {
+      // For non-shift_count field changes
+      updatedRows = [];
+      for (let i = 0; i < event.api.getDisplayedRowCount(); i++) {
+        updatedRows.push(event.api.getDisplayedRowAtIndex(i).data);
       }
-    };
+
+      window.__fixedGridApi.setRowData(updatedRows);
+      window.__timelineGridApi?.setRowData?.(updatedRows);
+      Wized.data.v.shift_assignment_rows = updatedRows;
+    }
+  }
+}
+};   // ✅ KEEP THIS — this ends the fixedOpts object cleanly
 
     const fixedGrid = new agGrid.Grid(fixedGridEl, fixedOpts);
     window.__fixedGridApi = fixedGrid.gridOptions.api;
     fixedGridEl.__gridApi = window.__fixedGridApi;
     window.__fixedGridApi.setRowData(rows);
 
-    const slots = Wized.data.v.timeline_slots || [];
     const timelineOpts = {
-      columnDefs: [
-        { field: "station_label", headerName: "Station", pinned: "left", cellStyle: stationCellStyle },
-        ...slots.map(t => ({
-          headerName: t,
-          field: t,
-          minWidth: 70,
-          maxWidth: 100,
-          valueGetter: p => p.data[t] || "",
-          cellStyle: p => p.value ? {
-            backgroundColor: p.data.role === "TL" ? getTLColor(p.data.station) : getStationColor(p.data.station),
-            fontWeight: "bold", textAlign: "center"
-          } : {}
-        }))
-      ],
-      defaultColDef: { resizable: true },
-      domLayout: "autoHeight"
-    };
+  columnDefs: [
+    {
+      field: "station_label",
+      headerName: "Station",
+      pinned: "left",
+      width: 140,
+      valueGetter: p => p.data.station || p.data.station_label || "",
+      cellStyle: stationCellStyle
+    },
+    {
+      field: "timeline_bar",
+      headerName: "Shift Timeline",
+      flex: 1,
+      cellRenderer: (params) => {
+        const { shift_start_time, shift_end_time, selected, role, station } = params.data;
+        if (!shift_start_time || !shift_end_time) return "";
+
+        const toMinutes = (t) => {
+          const [h, m] = t.split(":").map(Number);
+          return h * 60 + m;
+        };
+
+        const totalMinutes = toMinutes("24:00") - toMinutes("04:45");
+        const shiftStart = toMinutes(shift_start_time) - toMinutes("04:45");
+        const shiftEnd = toMinutes(shift_end_time) - toMinutes("04:45");
+        const leftPct = (shiftStart / totalMinutes) * 100;
+        const widthPct = ((shiftEnd - shiftStart) / totalMinutes) * 100;
+
+        const name = selected
+          ? `${selected.first_name} ${selected.surname}`
+          : `${role} Shift`;
+
+        const bg = role === "TL" ? getTLColor(station) : getStationColor(station);
+
+        return `
+  <div style="position: relative; height: 100%; width: 100%;">
+    <div style="
+      position: absolute;
+      left: ${leftPct}%;
+      width: ${widthPct}%;
+      top: 3px;
+      bottom: 3px;
+      background-color: ${bg};
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-weight: bold;
+      font-size: 14px;
+      white-space: nowrap;
+      overflow: hidden;
+      border-radius: 4px;
+      padding: 0 8px;
+      color: ${document.body.classList.contains('dark-mode') ? 'white' : 'black'};
+    ">
+      <span>${shift_start_time}</span>
+      <span style="margin: 0 auto; text-align: center;">${name}</span>
+      <span>${shift_end_time}</span>
+    </div>
+  </div>
+`;
+      }
+    }
+  ],
+  defaultColDef: {
+    resizable: true
+  },
+  domLayout: "autoHeight"
+};
 
     const timelineGrid = new agGrid.Grid(timelineGridEl, timelineOpts);
     window.__timelineGridApi = timelineOpts.api;
     timelineGridEl.__gridApi = window.__timelineGridApi;
-
-    const timelineRows = rows.map(row => {
-      const tr = { station: row.station, station_label: row.station };
-      slots.forEach(t => tr[t] = row.blocks?.[t] || "");
-      return tr;
-    });
+    
+    const timelineRows = rows.map(row => ({
+  station_label: row.station,
+  shift_start_time: row.shift_start_time,
+  shift_end_time: row.shift_end_time,
+  selected: row.selected,
+  role: row.role,
+  station: row.station
+}));
     window.__timelineGridApi?.setRowData?.(timelineRows);
   });
 });
