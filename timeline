@@ -401,6 +401,7 @@ function generateTimelineHours() {
     const div = document.createElement("div");
     div.textContent = label;
     div.style.flex = "1";
+    div.style.lineHeight = "32px";
     div.style.textAlign = "center";
     div.style.borderLeft = "1px solid #fff";
     div.style.boxSizing = "border-box";
@@ -409,7 +410,42 @@ function generateTimelineHours() {
   }
 }
     window.__timelineGridApi?.setRowData?.(timelineRows);
-    generateTimelineHours();
-  });
+generateTimelineHours();
+});
+setTimeout(() => {
+  const style = document.createElement("style");
+  style.textContent = `
+    /* Hide only the timeline_bar header content */
+    #timelineGrid .ag-header-cell[col-id="timeline_bar"] {
+      color: transparent !important;
+      background: transparent !important;
+      border: none !important;
+    }
+
+    /* Keep the pinned Station header styled and visible */
+    #timelineGrid .ag-pinned-left-header .ag-header-cell[col-id="station_label"] {
+      background: #6b0d22 !important;
+      color: white !important;
+      font-weight: bold;
+      padding: 8px;
+      border-bottom: none !important;
+    }
+
+    /* Let the overlay (#timelineHours) sit perfectly */
+    #timelineWrapper {
+      position: relative;
+    }
+
+    #timelineGrid .ag-header {
+      background: transparent !important;
+    }
+
+    /* Adjust margin for full overlay alignment */
+    #timelineHours {
+      margin-top: 0;
+    }
+  `;
+  document.head.appendChild(style);
+}, 50);
 });
 </script>
