@@ -1,20 +1,21 @@
 {
-  "name": "Thompsons Bus Services",
+  "name": "Thompsons Bus Services CSO App",
   "short_name": "Thompsons",
-  "start_url": "https://thompsons-pwa-field-staff.webflow.io/",
+  "start_url": "https://www.tbsstaff.au",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#000000",
   "icons": [
     {
-      "src": "https://cdn.prod.website-files.com/67c50bf20f70217c47afaeaf/67f8b4521028a5d2c993e64d_thompsons-icon-192x192.png",
+      "src": "/icons/thompsons-icon-192x192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "https://cdn.prod.website-files.com/67c50bf20f70217c47afaeaf/67f8b44ac8aa5d0e85680bd4_thompsons-icon-512x512.png",
+      "src": "/icons/thompsons-icon-512x512.png",
       "sizes": "512x512",
       "type": "image/png"
     }
   ]
 }
+
